@@ -1,55 +1,52 @@
 import os
 import subprocess
 import tempfile
+from pathlib import Path
 from typing import Optional
 
 import mss
 from mss import tools
 
 
-def capture_and_show(display_ms: int = 1000) -> None:
+def capture_to_temp_png() -> Path:
     """
-    Capture the primary monitor, show it in a temporary window for display_ms milliseconds,
-    then close the viewer and delete the image file.
+    Capture the primary monitor to a temporary PNG file.
 
-    This implementation is Windows-focused and uses mspaint to display the image under our control.
+    Returns the path to the temp file. Caller is responsible for deleting it.
     """
-    # Create a temporary PNG file
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-        tmp_path = tmp.name
+        tmp_path = Path(tmp.name)
 
-    # Capture screen to that file
     with mss.mss() as sct:
         monitor = sct.monitors[1]  # Primary monitor
         sct_img = sct.grab(monitor)
-        tools.to_png(sct_img.rgb, sct_img.size, output=tmp_path)
+        tools.to_png(sct_img.rgb, sct_img.size, output=str(tmp_path))
 
+    return tmp_path
+
+
+def show_temp_image(image_path: Path, display_ms: int = 1000) -> None:
+    """
+    Show an image file in a temporary viewer (mspaint on Windows) for display_ms milliseconds,
+    then close the viewer. Does NOT delete the file.
+    """
     viewer_proc: Optional[subprocess.Popen] = None
+
     try:
         # On Windows, use mspaint so we can kill it afterward
-        viewer_proc = subprocess.Popen(["mspaint", tmp_path])
-        # Wait while the image is visible
+        viewer_proc = subprocess.Popen(["mspaint", str(image_path)])
+
         msec = max(100, display_ms)
-        # Convert ms to seconds
-        subprocess_time = msec / 1000.0
-        # Simple sleep; user controls loop timing from main
+        seconds = msec / 1000.0
+
         import time
 
-        time.sleep(subprocess_time)
+        time.sleep(seconds)
     finally:
-        # Try to close the viewer
         if viewer_proc and viewer_proc.poll() is None:
             try:
                 viewer_proc.terminate()
             except Exception:
                 pass
-
-        # Delete the temporary file
-        try:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-        except Exception:
-            # If deletion fails, just ignore; OS will clean temp eventually
-            pass
 
 
